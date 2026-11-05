@@ -1,0 +1,402 @@
+---
+title: "Functional Diversity"
+author: "TG"
+date: "2022-12-07"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+# Overview
+
+This exercise is will demonstrate how we can measure functional diversity indices.
+
+We will begin by installing the packages `FD` and `funrar` using the `intall.packages` function, and then load it:
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(plotrix)
+library(FD)
+library(mFD)
+library(funrar)
+```
+
+load our regular fish data
+
+```{r message=FALSE, warning=FALSE}
+my_data <- read_csv(file = "~/אוניברסיטה/שנה ג/אקולוגיה של חברות/פרוייקט/Final data updated.csv")  #change to your file directory
+my_data$...1<-NULL # remove this weird column that appear because of excel...
+
+
+```
+
+load our trait data
+
+```{r}
+traits <-read.csv("~/אוניברסיטה/שנה ג/אקולוגיה של חברות/פרוייקט/species traits clean.csv")
+
+traits$X <- NULL
+
+```
+
+lets have a look at the traits data:
+
+```{r}
+knitr::kable(head(traits))
+```
+
+
+we have in six traits in our `traits` data:
+
+* **activity** (3 categories): diurnal, both diurnal and nocturnal, and nocturnal. 
+
+* **home_range** (3 categories): sedentary, mobile within a reef, and mobile between reefs. 
+
+* **schooling** (5 categories): solitary, pairing, small group(3–20individuals), medium (20–50 individuals), or large groups (>50 individuals). 
+
+* **diet** (7 categories): herbivorous-detritivorous,  macroalgal herbivorous, sessile invertebrates (i.e., corals, sponges), mobile invertebrate (i.e., crustaceans),planktivorous , piscivorous , and omnivorours
+
+* **water_level** (Vertical position in the water column, 3 categories) : benthic, bentho-pelagic, and pelagic. 
+
+* **Fish size** (cm, continues)
+
+for some species we might not have any traits data, lets add a column to out data that summaries how many `NA` we got for each species. 
+
+```{r}
+traits$all_na<-rowSums(is.na(traits))
+```
+
+## data preparation
+
+we want to use the function `dbFD` to calculate FD indexes. In order for the function to work, we need to organize our traits and species data according to this format:
+
+	
+`x` = matrix or data frame of **functional traits**. Traits can be numeric, ordered, or factor. Binary traits should be numeric and only contain 0 and 1. character traits will be converted to factor. 
+`x` can also be a species-by-species distance matrix of class dist, in which case NAs are not allowed.**In all cases, species labels are required.**
+
+so lets prepare our trait data accordingly:
+
+```{r}
+
+traits <- traits %>%
+  mutate_at(3,factor) %>% # convert the character columns to Factors
+  arrange(species) #arrange the species alphabetically (so it would be similar to `my_data` order)
+# remove this non-trait columns
+
+
+traits <- traits %>%  column_to_rownames(var="species") # add the species as row names
+
+```
+
+now lets check the structure of our trait data and see if some factors need to be ordered we can do so like this:
+
+```{r eval=FALSE, include=FALSE}
+str(traits)
+
+unique(traits$host.range) # the categories in the column
+
+traits$host.range <- ordered(c("gen","sp","ant mutual")) # this is how you can order a factor
+
+is.ordered(traits$home_range) #this line check if a factor is ordered
+
+traits$schooling <- ordered(c("Sol","Pair", "SmallG","MedG","LargeG"))
+
+traits$water_level <- ordered(c("Bottom","Low","High"))
+```
+
+
+if out traits are categorical or non-standardized continues variables (in different units and scales, i.e., temp and depth) we should transform the traits to dissimilarity matrix. 
+
+here I used **Gower** dissimilarity index to convert my traits to dissimilarities.
+
+**Gower** distance can be used to measure how different two records are. In previews lessons we used Bray Curtis index for this purpose. However, while bray Curtis fits to use on abundance data, **Gower** index is appropriate to use when we have combinations of logical, numerical, categorical or text data. The distance is always a number between 0 (identical) and 1 (maximally dis- similar).
+
+
+```{r}
+traits_gower <- gowdis(traits)
+```
+
+
+**Note** - the `w` argument is the weight we want to give to each trait. here I used 1 for all of my traits meaning they all have the same weight. if you have reason to believe some traits are more important them then others you can change the weights. it is also a good way to understand if your results are robust. If you play with the weights and the patterns remain stable that means your pattern are solid. The `gowdis` function defults is equal weight but you can specify it like this: 
+
+```{r}
+
+equal_weight <- rep(1,ncol(traits)) # all traits have the same weight
+traits_gower <- gowdis(traits,w = equal_weight)
+head(traits_gower)
+
+diet_wight<-c(1,1,1,1) # Diet have double weight
+traits_gower_diet <- gowdis(traits,w = diet_wight)
+head(traits_gower_diet) # note the difference in dissimilarity values...
+
+```
+
+**our trait data is ready!**
+
+so now lets prepare our species data:
+
+`a` = matrix containing the **abundances of the species** in x (or presence-absence, i.e. 0 or 1). Rows are sites and species are columns. NAs will be replaced by 0. The number of species (columns) in a must match the number of species (rows) in x. In addition, the species labels in a and x must be identical and in the same order.  
+
+
+```{r}
+
+keep <- rownames(traits) # which species have traits data
+
+
+sp_matrix <- my_data %>% remove_rownames %>% column_to_rownames(var="ID") # convert `survey_id` to row name
+
+sp_matrix <- sp_matrix[,9:ncol(sp_matrix)] # keep only species data
+
+sp_matrix <- sp_matrix %>% select(all_of(keep)) # remove columns of species that don't have traits data
+
+sp_matrix<-sp_matrix[rowSums(sp_matrix[])>0,]
+
+sp_matrix <- as.matrix(sp_matrix) # change class to matrix
+
+```
+
+# Community level Metrics  
+
+## Convex hull indeces (multidimensional)
+
+### FRic,FEve and FDiv
+
+We will first focus on three main indices: Functional Richness, Functional Evenness and  Functional Divergence. 
+  
+![](Quantifying diversity\FD.png)
+
+
+lets run the `dbFD` function:
+
+```{r warning=FALSE}
+ functional_index <- dbFD(x = traits_gower, a =  sp_matrix, corr = "lingoes") 
+```
+
+
+Lets convert the output to data.frame and join with the metadata:
+
+* I also included here in the data of Rao index on which we will talk next...you can ignore it for now
+
+```{r}
+
+FD <- data.frame(FRic = functional_index[["FRic"]],
+                 FEve = functional_index[["FEve"]] ,
+                 FDiv = functional_index[["FDiv"]],
+                 Rao  = functional_index[["RaoQ"]])
+
+FD <- FD %>% rownames_to_column("ID")
+
+filterred_data<-my_data[rowSums(my_data[10:length(my_data)])>0,]
+
+FD$ID=as.numeric(FD$ID)
+
+FD <- left_join(filterred_data[1:9],FD)
+```
+```{r}
+FD_spring<-filter(FD,Year_season=="Spring")
+FD_winter<-filter(FD,Year_season=="Winter")
+FD_summer<-filter(FD,Year_season=="Summer")
+FD_fall<-filter(FD,Year_season=="Fall")
+```
+now we can make some plots and explore how the indexes change with `Year_season`
+
+```{r, results='hold'}
+ggplot(data = FD,aes(x= Season_damage,y=FRic,fill = Season_damage))+geom_boxplot() + ggtitle("Functional Richness")
+
+ggplot(data = FD,aes(x= Season_damage,y=FDiv,fill = Season_damage))+geom_boxplot()+ ggtitle("Functional Divergence")
+
+ggplot(data = FD,aes(x= Season_damage,y=FEve,fill = Season_damage))+geom_boxplot()+ ggtitle("Functional Evenness")
+```
+
+we can also use continues variables like knoll surface area:  
+
+
+```{r,results='hold'}
+ggplot(data = FD,aes(x= Season_damage,y=FRic,color = damage))+geom_point()+geom_smooth(method = "lm")
+
+ggplot(data = FD,aes(x= Season_damage,y=FEve,color = damage))+geom_point()+geom_smooth(method = "lm")
+
+ggplot(data = FD,aes(x= Season_damage,y=FDiv,color = damage))+geom_point()+geom_smooth(method = "lm")
+
+```
+
+## Dissimilarity based indeces
+
+### Rao index
+
+Another index assessing functional diversity is the Rao Quadratic Entropy. This index representing the expected (functional) dissimilarity between two different species sampled at random. Its also takes into account the species abundances when estimating  functional diversity.
+
+the function `dbFD` already calculated Rao index so lets jump straight into plotting:
+
+ 
+```{r, results='hold'}
+
+ggplot(data = FD,aes(x= Year_season,y=Rao, ylab("Season"),fill = damage))+geom_boxplot() + ggtitle("Rao index")
+
+ggplot(data = FD,aes(x= Surface_Area,y=Rao,color = Year_season))+geom_point()+geom_smooth(method = "lm")
+
+
+```
+
+### Hill number
+
+Hill numbers, representing the effective number of equally abundant and functionally distinct species  within a group. We basically "transform" the functional dissimilarity between species to the effective number of functionally distinct species based on **richness** (q=0), **Shannon** (q=1) or **Simpson** (q=2) diversity indexes.
+
+**Note** - we also need to defines some threshold value (*tau*) that will represent the functional distinctiveness between any two species, i.e, over which value of dissimilarity 2 species are 'functionally indistinct'. Any two species/set of species with functional distance ≥ *tau* are treated as functionally distinct. here we will use the default *tau* value (mean tau) but different *tau* values will yield different results. 
+
+```{r}
+
+alpha_hill<-alpha.fd.hill(
+sp_matrix,
+traits_gower,
+q = c(0, 1, 2),
+tau = "mean")
+
+
+alpha.fd.hill_data<-as.data.frame(alpha_hill[["asb_FD_Hill"]])
+
+alpha.fd.hill_data <- alpha.fd.hill_data %>% rownames_to_column("survey_id")
+
+alpha_hill <- left_join(my_data[1:10],alpha.fd.hill_data)
+
+alpha_hill<-gather(alpha_hill,"q","FD",11:13)
+
+
+```
+
+and lets plot:
+
+```{r}
+
+alpha_hill<-alpha_hill %>%
+  group_by(Year_season,q) %>% 
+  summarise("mean_fd"=mean(FD),
+            "se"=std.error(FD)) %>%
+  ungroup()
+
+alpha_hill<-alpha_hill %>% mutate(q = case_when(
+  q =="FD_q0"~0,
+  q =="FD_q1"~1,
+  q =="FD_q2"~2)) %>% mutate(q=as.numeric(q)) # convert to numeric
+
+
+
+ggplot(data=alpha_hill,aes(x= q,y= mean_fd,color=Year_season ))+
+  geom_line(size = 1.2)+
+  geom_point(size = 3)+
+  geom_errorbar(aes(ymin = mean_fd-se,ymax = mean_fd +se),width = 0.1)+
+  ylab("Mean functional alpha diversity")
+
+
+```
+
+
+# Species-Level Metrics
+
+Now we will move on to species-level metrics. Namely Functional Distinctiveness and Uniqueness.
+
+We will use the `funrar` package for the second part of the exercise. This package has a very useful vignette that explains other functions in the package:  
+
+https://rekyt.github.io/funrar/articles/rarity_indices.html
+
+## Functional Distinctiveness
+
+The distinctiveness measures how a species is locally functionally rare, in comparison with the other species of community. high value of distinctiveness, corresponds to a species with highly original trait values compared to the rest of the local species pool
+
+We will calculate the distinctiveness of all our example species:
+
+```{r}
+
+di <- distinctiveness(pres_matrix = sp_matrix,  # The site x species matrix
+                     dist_matrix = compute_dist_matrix(traits))  # Functional Distance matrix
+
+```
+
+The result is a site by species matrix, where each value is the distinctiveness of the species. Let's plot the mean distinctiveness for each species: 
+
+
+```{r}
+distinctive <- di %>% 
+  as.data.frame() %>% # convert to data frame
+  rownames_to_column(var = "survey_id") # convert row name to column named survey_id
+ 
+
+distinctive <- gather(distinctive,Species,Distinctiveness,2:ncol(distinctive)) # convert to long format 
+
+
+distinctive <- distinctive %>%  
+  group_by(Species) %>% # group by species
+  mutate(mean = mean(Distinctiveness,na.rm = T)) %>%  # calculate the mean Distinctiveness pr species
+  ungroup() %>% # drop the grouping
+  mutate(Species = fct_reorder(Species,mean)) %>% # order the species based on the mean distinctiveness
+  na.omit() # lose NA`s 
+  
+ 
+ggplot(distinctive)+
+ aes(x = Species, y = Distinctiveness)+
+ stat_summary(geom = "point", fun = function(x) mean(x,na.rm = T))+
+ stat_summary(geom = "errorbar", fun.data = mean_se)+
+ coord_flip()
+
+```
+
+I have many species which makes its impossible yo see the labels...
+for convenience i can split the plot - for example:
+
+```{r}
+ggplot(distinctive[distinctive$mean > 0.65,])+
+ aes(x = Species, y = Distinctiveness)+
+ stat_summary(geom = "point", fun = function(x) mean(x,na.rm = T))+
+ stat_summary(geom = "errorbar", fun.data = mean_se)+
+ coord_flip()
+```
+We can also plot the species distinctiveness at each sample and see which knolls contained distinct species.
+
+Here I filtered **for the example** only one year at one site because my data is too large for one plot.  
+
+```{r}
+
+distinctive<-left_join(my_data[,1:10],distinctive)
+
+distinctive_caves<-distinctive %>% filter(Site=="Caves",Year_season == "2020 Spring") 
+
+ggplot(distinctive_caves, aes(Species, survey_id)) +
+  geom_tile(aes(fill = Distinctiveness), colour = "white") +
+  scale_fill_gradient(low = "white", high = "steelblue")+theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust=1))
+  
+
+```
+
+## Uniqueness
+
+Uniqueness measures how functionally rare a species is at the regional scale.
+
+We simply use the `uniqueness` function like so:
+
+```{r}
+ui <- uniqueness(pres_matrix = sp_matrix,  # The site x species matrix
+                     dist_matrix = compute_dist_matrix(traits))  # Functional Distance matrix) 
+
+knitr::kable(head(ui))
+```
+
+Each species get a value based on its overall uniqueness. We can plot the results easily like so:
+
+```{r}
+ui %>% 
+  mutate(species = forcats::fct_reorder(species,Ui)) %>% 
+  ggplot()+
+  aes(x = species, y = Ui)+
+  geom_col()+
+  coord_flip()
+
+```
+
+intresting notion: while *Tylosurus choram* was really distinct it is not unique at all.  
+It means that in knolls were we documented *Tylosurus choram* it has fairly distinct traits values from the rest of the species but across the species pool, there were other species with similar traits.
+
+![](Quantifying diversity\Tylosurus_choram.jpg)

@@ -1,0 +1,100 @@
+---
+title: "Assembly Rules - addition"
+author: "TG"
+date: "2023-01-12"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+We will use packages `tidyverse`, `vegan`,and `cooccur`.
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(vegan)
+library(cooccur)
+```
+
+
+In this script there is an example of how to compare different sites/year/treatments and explore which one has higher number of checkerboard units/ temperature.
+
+The best way to do so is to compare the SES of different units (i.e, sites) and thus you first need to chose the index you want to use and than the null model type. After you chose than we copy-paste the relevant script from the lesson into a `for` loop that will apply the same order of function to the different sites. 
+
+
+lets load the data:
+
+```{r message=FALSE, warning=FALSE}
+
+
+my_data <- read_csv(file =  "~/אוניברסיטה/שנה ג/אקולוגיה של חברות/פרוייקט/Final data updated.csv")  #change to your file directory
+
+```
+
+here I'll explore the differences in the NR site over the years
+
+```{r}
+my_data$...1<-NULL # remove this weird column that appear because of excel...
+original_data<-my_data
+my_data<-original_data %>% filter(Year_season=="Summer")
+
+first_sp<-10
+
+
+```
+
+I chose to use the Quasi-Swap null model to explore the number of checkerboard units.
+
+
+```{r message=FALSE, warning=FALSE}
+
+nested_list <- list()
+
+for (i in unique(my_data$Season_damage)) {
+  
+  one_year <- my_data %>% filter(Season_damage == i)
+  
+  species_matrix <-one_year[,first_sp:ncol(one_year)]
+
+  species_matrix <- species_matrix[, colSums(species_matrix != 0) > 0] # remove species with no occurrence in my filtered data
+ 
+  NullResults_q <- oecosimu(species_matrix,
+                          nestfun="nestedchecker",
+                          method="r1",
+                          nsimul = 1000)
+   
+  qs_SES <- NullResults_q[["oecosimu"]][["z"]]  
+  pval<- NullResults_q[["oecosimu"]][["pval"]]
+  data <- data.frame("Damage" = i,
+                     "SES" = qs_SES,
+                     "P_value" = pval)
+  
+  nested_list[[i]]<- data
+
+}
+
+ses_qs<-bind_rows(nested_list)
+
+# Add sign for significant values
+
+ses_qs<-ses_qs %>% mutate(significent_sign = case_when(P_value > 0.1 ~ "n.s",
+                                                       P_value > 0.05 & P_value <= 0.1 ~ "(.)",
+                                                       P_value > 0.01 & P_value <= 0.05 ~ "*",
+                                                       P_value > 0.005 & P_value <= 0.01 ~ "**",
+                                                       P_value <= 0.005 ~ "***"))
+
+
+
+ggplot(data = ses_qs,aes(x = Damage,y = SES,color = Damage))+
+  geom_point(size = 5)+
+  theme_bw()+
+  ggtitle("R1 null model")+
+    geom_text(
+    aes(label = significent_sign, y = SES + 0.2),
+    position = position_dodge(0.9),
+    vjust = 0
+  )
+
+
+```

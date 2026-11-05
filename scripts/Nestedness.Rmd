@@ -1,0 +1,194 @@
+---
+title: "Nestedness"
+author: "TG"
+date: "2022-12-15"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+```{r message=FALSE, warning=FALSE}
+library(tidyverse)
+library(vegan)
+library(cooccur)
+```
+
+## R Markdown
+
+```{r message=FALSE, warning=FALSE}
+my_data <- read_csv(file = "~/אוניברסיטה/שנה ג/אקולוגיה של חברות/פרוייקט/Final data updated.csv")  #change to your file directory
+
+my_data$...1<-NULL
+
+original_data<-my_data
+```
+
+```{r}
+
+my_data<-original_data %>% filter(Year_season=="Winter")
+
+species_matrix<-my_data[,first_sp:length(my_data)]
+```
+
+Now lets have a look at our data:
+
+
+```{r}
+my_nest_temp <- nestedtemp(species_matrix)
+my_nest_temp
+```
+
+```{r}
+plot(my_nest_temp, xlab = "Species", ylab="Sites",main="Extinction probability")
+
+```
+
+```{r}
+
+temp_null_qs <- oecosimu(species_matrix, nestfun="nestedtemp",method="quasiswap",nsimul = 100)
+temp_null_qs
+
+temp_sim_qs <- as.data.frame(t(temp_null_qs[["oecosimu"]][["simulated"]]))
+
+observed_temp <- my_nest_temp[["statistic"]][["temperature"]] 
+
+ggplot(temp_sim_qs,aes(x=V1))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed_temp,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Nestedness Temperature")+
+  ggtitle("Quasiswap null model for Nestedness Temperature")
+
+
+```
+
+```{r message=FALSE, warning=FALSE}
+
+nested_list <- list()
+
+for (i in unique(my_data$Season_damage)) {
+  
+  one_year <- my_data %>% filter(Season_damage == i)
+  
+  species_matrix <-one_year[,first_sp:ncol(one_year)]
+
+  species_matrix <- species_matrix[, colSums(species_matrix != 0) > 0] # remove species with no occurrence in my filtered data
+ 
+  NullResults_q <- oecosimu(species_matrix, nestfun="nestedtemp",method="r1",nsimul = 1000)
+   
+  qs_SES <- NullResults_q[["oecosimu"]][["z"]]  
+  pval<- NullResults_q[["oecosimu"]][["pval"]]
+  data <- data.frame("Damage" = i,
+                     "SES" = qs_SES,
+                     "P_value" = pval)
+  
+  nested_list[[i]]<- data
+
+}
+
+ses_qs<-bind_rows(nested_list)
+
+# Add sign for significant values
+
+ses_qs<-ses_qs %>% mutate(significent_sign = case_when(P_value > 0.1 ~ "n.s",
+                                                       P_value > 0.05 & P_value <= 0.1 ~ "(.)",
+                                                       P_value > 0.01 & P_value <= 0.05 ~ "*",
+                                                       P_value > 0.005 & P_value <= 0.01 ~ "**",
+                                                       P_value <= 0.005 ~ "***"))
+
+ggplot(data = ses_qs,aes(x = Damage,y = SES,color = Damage))+
+  geom_point(size = 5)+
+  theme_bw()+
+  ggtitle("Nestedness - R1 null model")+
+    geom_text(
+    aes(label = significent_sign, y = SES + 0.2),
+    position = position_dodge(0.9),
+    vjust = 0
+  )
+  
+
+```
+
+You can view the Standardized Effect Size (SES) 
+
+
+```{r}
+temp_ses_qs <-  temp_null_qs[["oecosimu"]][["z"]][["temperature"]] #extract standardized Effect Size
+
+```
+![](Quantifying diversity\SES2.png)
+
+Now that we understand the basic workflow of testing nestedness, we can try other metrics:
+
+1.`nesteddisc` - Number of discrepencies [Brualdi & Sanderson 1999](https://link.springer.com/article/10.1007/s004420050784)    
+
+2.`nestednodf` - Paired overlap and decreasing fill [Almeida-Neto et al., 2008](https://onlinelibrary.wiley.com/doi/10.1111/j.0030-1299.2008.16644.x)   
+
+The `nestednodf` metric also allows you to test hypotheses based on how you order your matrix.For example, this is how we would check for size-based nestedness. If we want to examine if small knolls are nested inside larger knoll we can do so in the following way:
+
+first lets arrange the data by descending knoll size, and subset the species matrix:
+
+```{r}
+size_based_matrix <- fall_data %>% arrange(desc(damage))
+
+size_based_matrix<-size_based_matrix[,first_sp:ncol(size_based_matrix)]
+```
+
+In the `nestednodf` index, nestedness statistic is evaluated separately for columns (N columns) for rows (N rows) and combined for the whole matrix (NODF). If you set order = FALSE, the statistic is evaluated with the current matrix ordering allowing tests of other meaningful hypothesis of matrix structure than default ordering by row and column totals 
+
+We will use `order = FALSE` to check for size-based nestedness. Are smaller knolls nested within bigger ones in their species composition?
+
+
+```{r}
+size_nes <- oecosimu(size_based_matrix,
+                     nestfun="nestednodf",
+                     order = FALSE,
+                     method="quasiswap",
+                     nsimul = 100)
+
+size_nes
+
+N.rows<-size_nes[["oecosimu"]][["simulated"]][2,]
+
+N.rows<-as.data.frame(N.rows)
+
+observed_row<-size_nes[["statistic"]][["statistic"]][["N.rows"]]
+
+
+ggplot(N.rows,aes(x=N.rows))+
+  geom_histogram(fill = "lightblue",color = "darkblue")+
+  geom_vline(xintercept = observed_row,color = "darkred",linetype="dashed",size = 1.1)+
+  xlab("Simulated Temperature Nestedness")+
+  ggtitle("Surface area based Nestedness  (quasiswap null model)")
+
+```
+
+Try different metrics and different randomization methods on your data. Like always - pay attention to your research question (testing nestedness in different time periods, for example)
+
+# Idiosyncrasy species
+
+
+Idiosyncratic species are species that are particularly nested/ non-nested.
+We can find idiosyncratic species using the same `nestedtemp` function we used before.
+
+
+```{r}
+
+my_nest_temp <- nestedtemp(species_matrix)
+
+par(mar=c(0.5,4,12,0.5))
+
+plot(my_nest_temp,names=T,kind="incidence") #this is visualization of the incidence of surprises
+
+```
+These are species that are expected to either be preset or absent in a sample but are not. Lower numbers represent higher idiosyncrasy:
+
+```{r}
+Idiosyncrasy_sp <-my_nest_temp$c
+
+Idiosyncrasy_sp<-as.data.frame(Idiosyncrasy_sp)
+
+```
+
