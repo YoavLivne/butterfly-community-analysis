@@ -5,9 +5,9 @@
 [![Status](https://img.shields.io/badge/Status-Completed-success?style=flat-square)](#)
 
 ## Overview
-This repository contains the computational analysis pipeline for my undergraduate final-year project investigating ecological community structures across varying seasons and environmental damage gradients. The project employs a rigorous approach to theoretical ecology, pairing individual- and sample-based stochastic simulations with empirical data to evaluate species richness, functional diversity, and community assembly rules. 
+This repository contains the computational analysis pipeline for my undergraduate final-year project investigating ecological community structures across varying seasons and environmental damage gradients. Using empirical data, I evaluate species richness, functional diversity, and community assembly rules. 
 
-Additionally, it incorporates Species Distribution Modeling (SDM) using BioClim variables to predict suitable habitat ranges for focal species such as *Colotis fausta* and *Maniola telmessia*.
+Additionally, I incorporate Species Distribution Modeling (SDM) using BioClim variables to predict suitable habitat ranges for focal species such as *Colotis fausta*.
 
 ## Key Features & Methodology
 The analytical pipeline is structured into four core modules:
