@@ -1,0 +1,95 @@
+---
+title: "Data Organization"
+output: html_document
+date: "2022-11-12"
+output: 
+  html_document: 
+    toc: yes
+    toc_float:
+      collapsed: no
+    theme: cerulean
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+summary(cars)
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+
+```{r}
+library(tidyverse)
+
+(Nataf_butterfly_data_2020==NA) = 0
+
+combined_data <- left_join(names_combined,Nataf_butterfly_data_2020)
+
+names20 = Nataf_butterfly_data_2020$`Scientific Name`
+
+names21 = Nataf_butterfly_data_2021$`Scientific Name`
+
+names_combined = union(names20,names21)
+
+finaldata=data.frame(names_combined)
+
+finaldata<-finaldata %>% rename("Species" = "Scientific Name")
+
+finaldata=left_join(finaldata,Nataf_butterfly_data_2021)
+
+df2 <- data.frame(t(finaldata[-1]))
+colnames(df2) <- finaldata[, 1]
+
+final_wide = df2
+
+final_wide[is.na(final_wide)]=0
+
+write.csv(final_wide,"~/אוניברסיטה/שנה ג/אקולוגיה של חברות/Data 20-21 final.csv")
+
+```
+
+```{r}
+species19 = Nataf_by_site_2019$Species
+species20 = Nataf_by_site_2020$Species
+species21 = Nataf_by_site_2021$Species
+
+allspecies = union(species19,species20)
+
+allspecies = union(allspecies,species21)
+
+finaldata = data.frame(allspecies)
+
+colnames(Nataf_by_site_2021) <- paste(colnames(Nataf_by_site_2021),"2021",sep=" ")
+
+colnames(Nataf_by_site_2021)[1]="allspecies"
+
+finaldata=left_join(finaldata,Nataf_by_site_2021)
+
+finaldata[is.na(finaldata)]=0
+
+finaldata<-finaldata %>% rename("Species" = "allspecies")
+
+write.csv(finaldata,"~/אוניברסיטה/שנה ג/אקולוגיה של חברות/Nataf by site long.csv")
+
+df2 <- data.frame(t(finaldata[-1]))
+colnames(df2) <- finaldata[, 1]
+
+
+write.csv(df2,"~/אוניברסיטה/שנה ג/אקולוגיה של חברות/Nataf by site wide.csv")
+```
